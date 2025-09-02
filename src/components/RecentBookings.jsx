@@ -1,0 +1,104 @@
+// src/components/RecentBookings.jsx
+import React, { useEffect, useMemo, useState, useCallback } from 'react'
+import { Eye, X } from 'lucide-react'
+
+const STORAGE_KEY = 'dd_bookings_v1'
+
+function loadBookings() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY)
+    return raw ? JSON.parse(raw) : []
+  } catch { return [] }
+}
+function saveBookings(items) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(items))
+  window.dispatchEvent(new CustomEvent('dd:bookings:update')) // live refresh
+}
+
+/* === NEW: helpers to always show NET (after promo) with two decimals === */
+function money(n){ return (Math.max(0, Number(n) || 0)).toFixed(2) }
+function displayAmount(b){
+  if (typeof b?.total === 'number') return money(b.total) // preferred: persisted net
+  if (typeof b?.net === 'number') return money(b.net)
+  if (typeof b?.gross === 'number' && typeof b?.discount === 'number') return money(b.gross - b.discount)
+  if (typeof b?.estimate === 'number' && typeof b?.discount === 'number') return money(b.estimate - b.discount)
+  if (typeof b?.amount === 'number') return money(b.amount)
+  return money(b?.estimate)
+}
+
+export default function RecentBookings({ limit = 5 }) {
+  const [items, setItems] = useState(() => loadBookings())
+
+  useEffect(() => {
+    const sync = () => setItems(loadBookings())
+    window.addEventListener('storage', sync)              // cross-tab
+    window.addEventListener('dd:bookings:update', sync)   // same tab
+    return () => {
+      window.removeEventListener('storage', sync)
+      window.removeEventListener('dd:bookings:update', sync)
+    }
+  }, [])
+
+  const display = useMemo(
+    () => [...items].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)).slice(0, limit),
+    [items, limit]
+  )
+
+  const cancel = useCallback((id) => {
+    setItems(prev => {
+      const next = prev.map(b => b.id === id ? { ...b, status: 'cancelled' } : b)
+      saveBookings(next)
+      return next
+    })
+  }, [])
+
+  if (display.length === 0) return null
+
+  return (
+    <div className="card p-6">
+      <div className="text-2xl font-extrabold mb-4">Recent Bookings</div>
+      <div className="space-y-4">
+        {display.map(b => (
+          <div key={b.id} className="rounded-2xl border overflow-hidden">
+            <div className="p-5 md:p-6">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <span
+                    className={
+                      'text-xs px-2 py-1 rounded-full font-semibold ' +
+                      (b.status === 'pending'
+                        ? 'bg-yellow-100 text-yellow-700'
+                        : b.status === 'cancelled'
+                        ? 'bg-red-100 text-red-700'
+                        : 'bg-emerald-100 text-emerald-700')
+                    }
+                  >
+                    {b.status}
+                  </span>
+                  <span className="text-sm text-gray-500">
+                    {new Date(b.createdAt || Date.now()).toLocaleString()}
+                  </span>
+                </div>
+                <div className="flex items-center gap-3 text-gray-500">
+                  <Eye size={16} className="cursor-pointer" title="View details" />
+                  <button onClick={() => cancel(b.id)} title="Cancel booking">
+                    <X size={16} className="hover:text-red-600" />
+                  </button>
+                </div>
+              </div>
+
+              <div className="mt-3 space-y-1 text-sm text-gray-700">
+                <div className="flex items-center gap-2"><span>📍</span><span>Pinned Location at {b.pickupLabel}</span></div>
+                <div className="flex items-center gap-2"><span>📍</span><span>Pinned Location at {b.dropoffLabel}</span></div>
+                <div className="flex items-center gap-2"><span>🚚</span><span>{b.vehicle} · {b.helpers}</span></div>
+              </div>
+
+              {/* === CHANGED: show net amount (after promo) with 2 decimals === */}
+              <div className="mt-3 pt-3 border-t font-semibold">${displayAmount(b)}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
