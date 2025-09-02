@@ -1,26 +1,38 @@
 import React from 'react'
+import { useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { getProfile, updateProfile } from '../lib/auth'
 
 const SAVED_PLACES_KEY = 'dd_saved_places'
+const AVATAR_KEY = 'dd_avatar'                 // keep avatar separate (per your current design)
+const EM_NAME_KEY = 'dd_em_name'
+const EM_PHONE_KEY = 'dd_em_phone'
+const STU_VERIFIED_KEY = 'dd_student_verified'
+const UNI_NAME_KEY = 'dd_uni_name'
+const GRAD_DATE_KEY = 'dd_grad_date'
+const UNI_EMAIL_KEY = 'dd_uni_email'
 
 export default function Profile() {
-  // identity
-  const [fullName, setFullName] = React.useState(localStorage.getItem('dd_fullname') || '')
-  const [email, setEmail]       = React.useState(localStorage.getItem('dd_email') || '')
-  const [phone, setPhone]       = React.useState(localStorage.getItem('dd_phone') || '')
-  const [avatar, setAvatar]     = React.useState(localStorage.getItem('dd_avatar') || '')
+  const nav = useNavigate()
+
+  // identity (now hydrated from the auth store)
+  const [fullName, setFullName] = React.useState('')
+  const [email, setEmail]       = React.useState('')    // read-only in UI
+  const [phone, setPhone]       = React.useState('')
+  const [avatar, setAvatar]     = React.useState(localStorage.getItem(AVATAR_KEY) || '')
 
   // emergency
-  const [emergencyName, setEmergencyName]   = React.useState(localStorage.getItem('dd_em_name') || '')
-  const [emergencyPhone, setEmergencyPhone] = React.useState(localStorage.getItem('dd_em_phone') || '')
+  const [emergencyName, setEmergencyName]   = React.useState(localStorage.getItem(EM_NAME_KEY) || '')
+  const [emergencyPhone, setEmergencyPhone] = React.useState(localStorage.getItem(EM_PHONE_KEY) || '')
 
-  // student verification (kept from earlier)
-  const [verified, setVerified] = React.useState(localStorage.getItem('dd_student_verified') === '1')
+  // student verification
+  const [verified, setVerified] = React.useState(localStorage.getItem(STU_VERIFIED_KEY) === '1')
   const [verifyOpen, setVerifyOpen] = React.useState(false)
-  const [uniName, setUniName]   = React.useState(localStorage.getItem('dd_uni_name') || '')
-  const [gradDate, setGradDate] = React.useState(localStorage.getItem('dd_grad_date') || '')
-  const [uniEmail, setUniEmail] = React.useState(localStorage.getItem('dd_uni_email') || '')
+  const [uniName, setUniName]   = React.useState(localStorage.getItem(UNI_NAME_KEY) || '')
+  const [gradDate, setGradDate] = React.useState(localStorage.getItem(GRAD_DATE_KEY) || '')
+  const [uniEmail, setUniEmail] = React.useState(localStorage.getItem(UNI_EMAIL_KEY) || '')
 
-  // saved places (new)
+  // saved places
   const [places, setPlaces] = React.useState(() => {
     try { return JSON.parse(localStorage.getItem(SAVED_PLACES_KEY)) || [] } catch { return [] }
   })
@@ -29,6 +41,20 @@ export default function Profile() {
 
   const fileRef = React.useRef(null)
 
+  // ---- hydrate from the logged-in user (auth store) ----
+  useEffect(() => {
+    const u = getProfile()
+    if (!u) {
+      // not logged in → bounce to /auth
+      nav('/auth', { replace: true })
+      return
+    }
+    setFullName(u.fullName || '')
+    setPhone(u.phone || '')
+    setEmail(u.email || '')
+  }, [nav])
+
+  // avatar upload
   function openFilePicker() { fileRef.current?.click() }
   function onFileChange(e) {
     const file = e.target.files?.[0]; if (!file) return
@@ -36,21 +62,27 @@ export default function Profile() {
     reader.onload = () => {
       const dataUrl = reader.result
       setAvatar(dataUrl)
-      localStorage.setItem('dd_avatar', dataUrl)
+      localStorage.setItem(AVATAR_KEY, dataUrl)
     }
     reader.readAsDataURL(file)
   }
 
+  // persist changes
   function saveChanges() {
-    localStorage.setItem('dd_fullname', fullName.trim())
-    localStorage.setItem('dd_email', email.trim())
-    localStorage.setItem('dd_phone', phone.trim())
-    localStorage.setItem('dd_em_name', emergencyName.trim())
-    localStorage.setItem('dd_em_phone', emergencyPhone.trim())
-    localStorage.setItem(SAVED_PLACES_KEY, JSON.stringify(places.slice(0, 4)))
-    alert('Changes saved ✅')
+    try {
+      // keep profile fields in auth store so login/other pages stay in sync
+      updateProfile({ fullName: fullName.trim(), phone: phone.trim() })
+      // persist the rest locally (per your current design)
+      localStorage.setItem(EM_NAME_KEY, emergencyName.trim())
+      localStorage.setItem(EM_PHONE_KEY, emergencyPhone.trim())
+      localStorage.setItem(SAVED_PLACES_KEY, JSON.stringify(places.slice(0, 4)))
+      alert('Changes saved ✅')
+    } catch (err) {
+      alert(err?.message || 'Failed to save profile')
+    }
   }
 
+  // saved places
   function addPlace(e) {
     e?.preventDefault()
     if (!newLabel.trim() || !newAddress.trim()) return
@@ -61,14 +93,15 @@ export default function Profile() {
   }
   function removePlace(id) { setPlaces(places.filter(p => p.id !== id)) }
 
+  // student verification
   function completeVerification(e) {
     e.preventDefault()
     if (!uniName || !gradDate || !uniEmail) { alert('Please fill university, graduation date, and university email'); return }
     setVerified(true)
-    localStorage.setItem('dd_student_verified', '1')
-    localStorage.setItem('dd_uni_name', uniName)
-    localStorage.setItem('dd_grad_date', gradDate)
-    localStorage.setItem('dd_uni_email', uniEmail)
+    localStorage.setItem(STU_VERIFIED_KEY, '1')
+    localStorage.setItem(UNI_NAME_KEY, uniName)
+    localStorage.setItem(GRAD_DATE_KEY, gradDate)
+    localStorage.setItem(UNI_EMAIL_KEY, uniEmail)
     setVerifyOpen(false)
   }
 
@@ -95,8 +128,28 @@ export default function Profile() {
         <div className="card p-6">
           <div className="font-semibold text-xl">Personal Information</div>
           <div className="grid grid-cols-2 gap-3 mt-3">
-            <input value={fullName} onChange={e=>setFullName(e.target.value)} placeholder="Full name" className="h-11 px-3 rounded-xl border"/>
-            <input value={phone} onChange={e=>setPhone(e.target.value)} placeholder="(555) 123-4567" className="h-11 px-3 rounded-xl border"/>
+            <input
+              value={fullName}
+              onChange={e=>setFullName(e.target.value)}
+              placeholder="Full name"
+              className="h-11 px-3 rounded-xl border"
+            />
+            <input
+              value={phone}
+              onChange={e=>setPhone(e.target.value)}
+              placeholder="(555) 123-4567"
+              className="h-11 px-3 rounded-xl border"
+            />
+          </div>
+          {/* Email as read-only from auth */}
+          <div className="grid grid-cols-1 gap-3 mt-3">
+            <input
+              value={email}
+              readOnly
+              className="h-11 px-3 rounded-xl border bg-gray-50"
+              placeholder="Email"
+              title="Email comes from your account and cannot be edited here"
+            />
           </div>
         </div>
 
@@ -129,7 +182,7 @@ export default function Profile() {
           </div>
         </div>
 
-        {/* Saved Places (new) */}
+        {/* Saved Places */}
         <div className="md:col-span-2 card p-6">
           <div className="font-semibold text-xl mb-2">Saved Places</div>
           <form onSubmit={addPlace} className="grid md:grid-cols-3 gap-3">
@@ -181,3 +234,4 @@ export default function Profile() {
     </main>
   )
 }
+
