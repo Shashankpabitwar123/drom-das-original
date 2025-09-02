@@ -3,6 +3,8 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { createBrowserRouter, RouterProvider } from 'react-router-dom'
 import './index.css'
+import RequireAuth from './components/RequireAuth'
+
 
 import App from './App'
 import Splash from './pages/Splash'
@@ -28,14 +30,14 @@ const router = createBrowserRouter(
         { index: true, element: <Splash /> },
         { path: 'auth', element: <Auth /> },
         { path: 'landing', element: <Landing /> },
-        { path: 'home', element: <Home /> },
-        { path: 'payment', element: <Payment /> },
-        { path: 'confirmation', element: <Confirmation /> },
-        { path: 'profile', element: <Profile /> },
-        { path: 'wallet', element: <Wallet /> },
-        { path: 'offers', element: <Offers /> },
-        { path: 'bookings', element: <Bookings /> },
-        { path: 'chat', element: <ChatAI /> },
+        { path: 'home', element: <RequireAuth><Home /></RequireAuth> },
+        { path: 'wallet', element: <RequireAuth><Wallet /></RequireAuth> },
+        { path: 'payment', element: <RequireAuth><Payment /></RequireAuth> },
+        { path: 'profile', element: <RequireAuth><Profile /></RequireAuth> },
+        { path: 'confirmation', element: <RequireAuth><Confirmation /></RequireAuth> },
+        { path: 'offers', element: <RequireAuth><Offers /></RequireAuth> },
+        { path: 'bookings', element: <RequireAuth><Bookings /></RequireAuth> },
+        { path: 'chat', element: <RequireAuth><ChatAI /></RequireAuth> },
         { path: '*', element: <NotFound /> },
       ],
     },
