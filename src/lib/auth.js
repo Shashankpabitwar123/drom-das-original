@@ -1,82 +1,114 @@
 // src/lib/auth.js
+
+// storage keys
 const USERS_KEY = 'dd_users_v1';
-const AUThed_KEY = 'dormdash_authed';
+const AUTHED_KEY = 'dormdash_authed';
 const CURRENT_USER_KEY = 'dd_current_user';
 
-function loadUsers() {
-  try {
-    const raw = localStorage.getItem(USERS_KEY);
-    return raw ? JSON.parse(raw) : [];
-  } catch { return []; }
+// --- helpers (single definitions) ---
+function _normalizeEmail(e) {
+  return String(e || '').trim().toLowerCase();
 }
-function saveUsers(users) {
+
+function _readJSON(key, fallback) {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+// Load/save the user registry (array of user objects)
+export function loadUsers() {
+  return _readJSON(USERS_KEY, []);
+}
+export function saveUsers(users) {
   localStorage.setItem(USERS_KEY, JSON.stringify(users));
 }
 
+// --- session helpers ---
 export function isAuthed() {
-  return localStorage.getItem(AUThed_KEY) === '1' && !!localStorage.getItem(CURRENT_USER_KEY);
+  return localStorage.getItem(AUTHED_KEY) === '1' && !!localStorage.getItem(CURRENT_USER_KEY);
 }
 export function currentUser() {
-  try { return JSON.parse(localStorage.getItem(CURRENT_USER_KEY) || 'null'); }
-  catch { return null; }
+  return _readJSON(CURRENT_USER_KEY, null);
 }
 export function logout() {
-  localStorage.removeItem(AUThed_KEY);
+  localStorage.removeItem(AUTHED_KEY);
   localStorage.removeItem(CURRENT_USER_KEY);
 }
 
-function normalizeEmail(e) { return String(e || '').trim().toLowerCase(); }
-
+// --- registration/login ---
 export function registerUser({ username, fullName, phone, email, password }) {
   const users = loadUsers();
-  const em = normalizeEmail(email);
+  const em = _normalizeEmail(email);
   if (!em || !password) throw new Error('Email and password are required.');
-  if (users.some(u => normalizeEmail(u.email) === em)) {
+  if (users.some(u => _normalizeEmail(u.email) === em)) {
     throw new Error('An account with this email already exists.');
   }
+
   const user = {
     id: 'u_' + Math.random().toString(36).slice(2),
     username: (username || '').trim(),
     fullName: (fullName || '').trim(),
     phone: (phone || '').trim(),
     email: em,
-    // ⚠️ For demo only. Never store plain passwords in production!
+    // NOTE: demo only — do NOT store plain text passwords in production.
     password: String(password),
-    createdAt: Date.now()
+    createdAt: Date.now(),
   };
+
   users.push(user);
   saveUsers(users);
-  localStorage.setItem(AUThed_KEY, '1');
-  localStorage.setItem(CURRENT_USER_KEY, JSON.stringify({ id: user.id, email: user.email, username: user.username, fullName: user.fullName, phone: user.phone }));
+
+  // set session cache
+  localStorage.setItem(AUTHED_KEY, '1');
+  localStorage.setItem(
+    CURRENT_USER_KEY,
+    JSON.stringify({
+      id: user.id,
+      email: user.email,
+      username: user.username,
+      fullName: user.fullName,
+      phone: user.phone,
+    })
+  );
+
   return user;
 }
 
 export function loginUser({ email, password }) {
   const users = loadUsers();
-  const em = normalizeEmail(email);
+  const em = _normalizeEmail(email);
   const pw = String(password || '');
-  const user = users.find(u => normalizeEmail(u.email) === em && String(u.password) === pw);
+
+  const user = users.find(
+    u => _normalizeEmail(u.email) === em && String(u.password) === pw
+  );
   if (!user) throw new Error('Invalid email or password.');
-  localStorage.setItem(AUThed_KEY, '1');
-  localStorage.setItem(CURRENT_USER_KEY, JSON.stringify({ id: user.id, email: user.email, username: user.username, fullName: user.fullName, phone: user.phone }));
+
+  localStorage.setItem(AUTHED_KEY, '1');
+  localStorage.setItem(
+    CURRENT_USER_KEY,
+    JSON.stringify({
+      id: user.id,
+      email: user.email,
+      username: user.username,
+      fullName: user.fullName,
+      phone: user.phone,
+    })
+  );
+
   return user;
 }
-//--------------------------------------------------------------------------------------------------------------//
-// --- add to src/lib/auth.js ---
-export function loadUsers() {            // (re-export for Profile page)
-  try { const raw = localStorage.getItem('dd_users_v1'); return raw ? JSON.parse(raw) : []; }
-  catch { return []; }
-}
-export function saveUsers(users) {       // (re-export for Profile page)
-  localStorage.setItem('dd_users_v1', JSON.stringify(users));
-}
 
-/** Returns the lightweight profile used across the app */
+// --- profile helpers used by Profile.jsx ---
 export function getProfile() {
-  return currentUser(); // same as CURRENT_USER_KEY
+  // lightweight profile snapshot used by the app
+  return currentUser();
 }
 
-/** Update the logged-in user's profile and keep everything in sync */
 export function updateProfile(partial) {
   const cur = currentUser();
   if (!cur) throw new Error('Not signed in.');
@@ -89,7 +121,7 @@ export function updateProfile(partial) {
   users[idx] = updatedUser;
   saveUsers(users);
 
-  // refresh the cached "current user" (used by header/profile, etc.)
+  // refresh session snapshot
   const cached = {
     id: updatedUser.id,
     email: updatedUser.email,
@@ -97,6 +129,6 @@ export function updateProfile(partial) {
     fullName: updatedUser.fullName,
     phone: updatedUser.phone,
   };
-  localStorage.setItem('dd_current_user', JSON.stringify(cached));
+  localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(cached));
   return cached;
 }
