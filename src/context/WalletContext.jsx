@@ -23,12 +23,8 @@ function saveJSON(key, value) {
 }
 
 function seedCardsIfEmpty(cards) {
-  if (cards && cards.length) return cards
-  // Seed with demo cards to match the screenshot; remove if you want empty by default.
-  return [
-    { id:'c_4242', brand:'Visa',       last4:'4242', expMonth:12, expYear:25, name:'Demo Visa', isDefault:true },
-    { id:'c_5555', brand:'Mastercard', last4:'5555', expMonth:12, expYear:25, name:'Demo MC',   isDefault:false },
-  ]
+  // Do not seed demo cards; start empty so users only see cards they add.
+  return Array.isArray(cards) ? cards : [];
 }
 
 export function WalletProvider({ children }) {
