@@ -61,3 +61,42 @@ export function loginUser({ email, password }) {
   localStorage.setItem(CURRENT_USER_KEY, JSON.stringify({ id: user.id, email: user.email, username: user.username, fullName: user.fullName, phone: user.phone }));
   return user;
 }
+//--------------------------------------------------------------------------------------------------------------//
+// --- add to src/lib/auth.js ---
+export function loadUsers() {            // (re-export for Profile page)
+  try { const raw = localStorage.getItem('dd_users_v1'); return raw ? JSON.parse(raw) : []; }
+  catch { return []; }
+}
+export function saveUsers(users) {       // (re-export for Profile page)
+  localStorage.setItem('dd_users_v1', JSON.stringify(users));
+}
+
+/** Returns the lightweight profile used across the app */
+export function getProfile() {
+  return currentUser(); // same as CURRENT_USER_KEY
+}
+
+/** Update the logged-in user's profile and keep everything in sync */
+export function updateProfile(partial) {
+  const cur = currentUser();
+  if (!cur) throw new Error('Not signed in.');
+
+  const users = loadUsers();
+  const idx = users.findIndex(u => u.id === cur.id);
+  if (idx === -1) throw new Error('User record not found.');
+
+  const updatedUser = { ...users[idx], ...partial };
+  users[idx] = updatedUser;
+  saveUsers(users);
+
+  // refresh the cached "current user" (used by header/profile, etc.)
+  const cached = {
+    id: updatedUser.id,
+    email: updatedUser.email,
+    username: updatedUser.username,
+    fullName: updatedUser.fullName,
+    phone: updatedUser.phone,
+  };
+  localStorage.setItem('dd_current_user', JSON.stringify(cached));
+  return cached;
+}
