@@ -1,5 +1,7 @@
 import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { registerUser, loginUser } from '../lib/auth';
+
 
 export default function Auth() {
   const [mode, setMode] = useState('login')
@@ -16,19 +18,20 @@ export default function Auth() {
 
   const title = mode === 'login' ? 'Log in to DormDash' : 'Create your account'
 
-  function handleSubmit(e) {
-    e.preventDefault()
-
+function handleSubmit(e) {
+  e.preventDefault();
+  try {
     if (mode === 'create') {
-      localStorage.setItem('dormdash_username', username.trim())
-      localStorage.setItem('dd_fullname', (fullName || '').trim())
-      localStorage.setItem('dd_email', (email || '').trim())
-      localStorage.setItem('dd_phone', (phone || '').trim())
+      registerUser({ username, fullName, phone, email, password });
+    } else {
+      loginUser({ email, password });
     }
-
-    localStorage.setItem('dormdash_authed', '1')
-    nav('/home')
+    nav('/home');
+  } catch (err) {
+    alert(err?.message || 'Authentication error');
   }
+}
+
 
   return (
     <div className="min-h-screen bg-gray-50 grid place-items-center px-4">
