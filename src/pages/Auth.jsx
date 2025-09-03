@@ -2,13 +2,12 @@ import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { registerUser, loginUser } from '../lib/auth';
 
-
 export default function Auth() {
   const [mode, setMode] = useState('login')
   const nav = useNavigate()
 
   // create-account fields
-  const [username, setUsername] = useState('')
+  const [username, setUsername] = useState('')   // kept for your UI, not sent to auth
   const [fullName, setFullName] = useState('')
   const [phone, setPhone] = useState('')
 
@@ -18,20 +17,26 @@ export default function Auth() {
 
   const title = mode === 'login' ? 'Log in to DormDash' : 'Create your account'
 
-function handleSubmit(e) {
-  e.preventDefault();
-  try {
-    if (mode === 'create') {
-      registerUser({ username, fullName, phone, email, password });
-    } else {
-      loginUser({ email, password });
+  // IMPORTANT: send `name` (mapped from fullName) and phone on signup
+  async function handleSubmit(e) {
+    e.preventDefault();
+    try {
+      if (mode === 'create') {
+        await registerUser({
+          name: fullName,     // <-- auth expects `name`
+          email,
+          password,
+          phone,              // <-- included so Profile shows it immediately
+          // username intentionally not stored in auth (UI-only)
+        });
+      } else {
+        await loginUser({ email, password });
+      }
+      nav('/home');
+    } catch (err) {
+      alert(err?.message || 'Authentication error');
     }
-    nav('/home');
-  } catch (err) {
-    alert(err?.message || 'Authentication error');
   }
-}
-
 
   return (
     <div className="min-h-screen bg-gray-50 grid place-items-center px-4">
@@ -116,3 +121,4 @@ function handleSubmit(e) {
     </div>
   )
 }
+
