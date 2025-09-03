@@ -4,7 +4,6 @@ import {
   getActiveUser,
   getActiveUserId,
   updateActiveUser,
-  createUser, // not used here, but handy if you import elsewhere
 } from '../lib/auth'
 
 const WalletCtx = createContext(null)
@@ -13,11 +12,10 @@ export function WalletProvider({ children }) {
   const [activeUserId, setActiveUserId] = useState(getActiveUserId())
   const [balance, setBalance] = useState(0)
   const [cards, setCards] = useState([])   // [{id, brand, last4, expMonth, expYear, isDefault, name}]
-  const [txns, setTxns] = useState([])     // [{id, label, amount, date}]
+  const [txns, setTxns] = useState([])     // [{id, label, amount, date, cardId?}]
 
-  // ---- helpers to read/write wallet fields on the active user record ----
+  // ---------- helpers to read/write wallet fields on the active user record ----------
   function loadFromUser(u) {
-    // New accounts may not have wallet fields yet; initialize safely.
     const b = Number(u?.wallet ?? 0)
     const c = Array.isArray(u?.walletCards) ? u.walletCards : []
     const t = Array.isArray(u?.walletTxns) ? u.walletTxns : []
@@ -31,7 +29,7 @@ export function WalletProvider({ children }) {
     if (updated) loadFromUser(updated)
   }
 
-  // ---- initial load + respond to account switches (e.g., login/logout) ----
+  // ---------- initial load + respond to account switches (e.g., login/logout) ----------
   useEffect(() => {
     const u = getActiveUser()
     setActiveUserId(getActiveUserId())
@@ -39,7 +37,7 @@ export function WalletProvider({ children }) {
     // Ensure new users start at 0 and have arrays defined
     if (u && (u.wallet == null || u.walletCards == null || u.walletTxns == null)) {
       writeToUser({
-        wallet: Number(u.wallet ?? 0),      // default 0
+        wallet: Number(u.wallet ?? 0),
         walletCards: Array.isArray(u.walletCards) ? u.walletCards : [],
         walletTxns: Array.isArray(u.walletTxns) ? u.walletTxns : [],
       })
@@ -47,6 +45,7 @@ export function WalletProvider({ children }) {
     }
 
     loadFromUser(u)
+
     // Listen to storage changes (another tab) and auth changes
     const onStorage = () => {
       setActiveUserId(getActiveUserId())
@@ -62,7 +61,7 @@ export function WalletProvider({ children }) {
     loadFromUser(getActiveUser())
   }
 
-  // ---- card helpers ----
+  // ---------- card helpers ----------
   function brandFromNumber(num = '') {
     const n = (num || '').replace(/\s+/g, '')
     if (/^4/.test(n)) return 'Visa'
@@ -91,7 +90,11 @@ export function WalletProvider({ children }) {
     writeToUser({ walletCards: next })
   }
 
-  // ---- funds / transactions ----
+  function getDefaultCardId() {
+    return cards.find(c => c.isDefault)?.id || null
+  }
+
+  // ---------- funds / transactions ----------
   function addFunds(amount) {
     const amt = Number(amount)
     if (!amt || amt <= 0) return
@@ -110,7 +113,7 @@ export function WalletProvider({ children }) {
     writeToUser({ wallet: newBal, walletTxns: nextTxns })
   }
 
-  // If you ever deduct for a booking, call this:
+  // If you ever deduct for a booking outside of the payment flow, use this.
   function charge(amount, label = 'Move charge') {
     const cost = Math.abs(Number(amount || 0))
     if (!cost) return
@@ -129,7 +132,67 @@ export function WalletProvider({ children }) {
     writeToUser({ wallet: newBal, walletTxns: nextTxns })
   }
 
-  // ---- month stats (for your UI box) ----
+  /**
+   * pay({ funds, amountDue, cardId, label })
+   * - funds: number of wallet dollars to use
+   * - amountDue: total charge for the order (optional—if provided we’ll compute the card remainder)
+   * - cardId: which card to charge (optional; if omitted and remainder > 0, uses default card if available)
+   * - label: label for the card transaction (default 'Card charge')
+   *
+   * Records:
+   *   - "Wallet used" negative txn (if funds > 0)
+   *   - "Card charge" negative txn for remainder (if any and a card is available)
+   *
+   * Returns { ok: true, walletUsed, cardCharged, remainder }
+   */
+  function pay({ funds = 0, amountDue = null, cardId = null, label = 'Card charge' } = {}) {
+    const currentBal = Number(balance) || 0
+    const requestedWallet = Math.max(0, Number(funds) || 0)
+    const walletUsed = Math.min(requestedWallet, currentBal)
+
+    let newBal = currentBal
+    let nextTxns = txns
+
+    if (walletUsed > 0) {
+      newBal = currentBal - walletUsed
+      const walletTxn = {
+        id: crypto?.randomUUID ? crypto.randomUUID() : String(Date.now()),
+        label: 'Wallet used',
+        amount: -walletUsed,
+        date: Date.now(),
+      }
+      nextTxns = [walletTxn, ...nextTxns]
+      setBalance(newBal)
+      setTxns(nextTxns)
+      writeToUser({ wallet: newBal, walletTxns: nextTxns })
+    }
+
+    // Determine card remainder if amountDue provided; otherwise 0
+    const remainder = amountDue != null
+      ? Math.max(0, Number(amountDue) - walletUsed)
+      : 0
+
+    const chosenCardId = cardId || getDefaultCardId()
+    let cardCharged = 0
+
+    if (remainder > 0 && chosenCardId) {
+      cardCharged = remainder
+      const cardTxn = {
+        id: crypto?.randomUUID ? crypto.randomUUID() : String(Date.now() + 1),
+        label: label || 'Card charge',
+        amount: -cardCharged,
+        date: Date.now(),
+        cardId: chosenCardId,
+      }
+      const updated = [cardTxn, ...nextTxns]
+      setTxns(updated)
+      writeToUser({ wallet: newBal, walletTxns: updated })
+    }
+
+    return { ok: true, walletUsed, cardCharged, remainder }
+  }
+
+  // ---------- month stats (for your UI box) ----------
   const monthStats = useMemo(() => {
     const now = new Date()
     const y = now.getFullYear()
@@ -150,7 +213,7 @@ export function WalletProvider({ children }) {
     // data
     balance, cards, txns, monthStats,
     // actions
-    addFunds, charge, addCard, setDefaultCard,
+    addFunds, charge, addCard, setDefaultCard, pay,
     // util
     refreshFromAuthChange,
   }
@@ -163,4 +226,3 @@ export function useWallet() {
   if (!ctx) throw new Error('useWallet must be used inside <WalletProvider>')
   return ctx
 }
-
