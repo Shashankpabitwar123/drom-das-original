@@ -130,6 +130,7 @@ export function getProfile() {
   return {
     id: u.id,
     name: u.name ?? '',
+    fullName: u.name ?? '',
     email: u.email ?? '',
     phone: u.phone ?? '',
     avatar: u.avatar ?? '',
@@ -137,6 +138,10 @@ export function getProfile() {
 }
 
 export function updateProfile(patch) {
+   if (Object.prototype.hasOwnProperty.call(patch, 'fullName')) {
+    patch.name = patch.fullName;         // <-- map
+    delete patch.fullName;
+  }
   const allowed = ['name', 'email', 'phone', 'avatar'];
   const safe = {};
   for (const k of allowed) {
@@ -148,11 +153,17 @@ export function updateProfile(patch) {
   const updated = updateActiveUser(safe);
   if (!updated) return null;
 
+  (function setGreetingName(user) {
+  const display = (user?.name && String(user.name).trim()) || user?.email || 'Guest';
+  try { localStorage.setItem('dormdash_username', display); } catch {}
+  })(updated);
+
   setGreetingName(updated);   // keep greeting in sync
 
   return {
     id: updated.id,
     name: updated.name ?? '',
+    fullName: updated.name ?? '', 
     email: updated.email ?? '',
     phone: updated.phone ?? '',
     avatar: updated.avatar ?? '',
