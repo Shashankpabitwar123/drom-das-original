@@ -1,5 +1,5 @@
 // src/lib/auth.js
-// Centralized auth + per-user wallet storage in localStorage
+// Centralized auth + per-user storage in localStorage (auth, wallet, profile, bookings)
 
 // ------------------------------
 // Storage helpers
@@ -45,7 +45,7 @@ export function updateActiveUser(patch) {
   return users[i];
 }
 
-// Keep Home header name fresh
+// Greeting name for Home header
 function setGreetingName(user) {
   const display = (user?.name && String(user.name).trim()) || user?.email || 'Guest';
   try { localStorage.setItem('dormdash_username', display); } catch {}
@@ -73,9 +73,13 @@ export function createUser({ name, email, password, phone }) {
     email: normEmail,
     password: password ?? '',      // (dev only)
     phone: phone ?? '',
+    // wallet
     wallet: 0,
     walletCards: [],
     walletTxns: [],
+    // bookings
+    bookings: [],                  // <-- per-user booking history
+    // profile
     avatar: '',
     createdAt: Date.now(),
   };
@@ -99,11 +103,12 @@ export function loginUser({ email, password }) {
   );
   if (!user) throw new Error('Invalid email or password.');
 
-  // Backfill wallet/profile fields if missing (older accounts)
+  // Backfill missing fields for older accounts
   let patched = false;
   if (user.wallet == null) { user.wallet = 0; patched = true; }
   if (!Array.isArray(user.walletCards)) { user.walletCards = []; patched = true; }
   if (!Array.isArray(user.walletTxns)) { user.walletTxns = []; patched = true; }
+  if (!Array.isArray(user.bookings)) { user.bookings = []; patched = true; }   // <-- ensure present
   if (user.phone == null) { user.phone = ''; patched = true; }
   if (user.avatar == null) { user.avatar = ''; patched = true; }
   if (patched) {
@@ -130,7 +135,7 @@ export function getProfile() {
   return {
     id: u.id,
     name: u.name ?? '',
-    fullName: u.name ?? '',     // <-- alias for UI
+    fullName: u.name ?? '',     // alias for UI
     email: u.email ?? '',
     phone: u.phone ?? '',
     avatar: u.avatar ?? '',
@@ -146,27 +151,68 @@ export function updateProfile(patch) {
 
   const allowed = ['name', 'email', 'phone', 'avatar'];
   const safe = {};
-  for (const k of allowed) {
-    if (Object.prototype.hasOwnProperty.call(patch, k)) {
-      safe[k] = patch[k];
-    }
-  }
-  if (typeof safe.email === 'string') {
-    safe.email = safe.email.trim().toLowerCase();
-  }
+  for (const k of allowed) if (Object.prototype.hasOwnProperty.call(patch, k)) safe[k] = patch[k];
+  if (typeof safe.email === 'string') safe.email = safe.email.trim().toLowerCase();
 
   const updated = updateActiveUser(safe);
   if (!updated) return null;
 
-  setGreetingName(updated); // keep Home header in sync
+  setGreetingName(updated);
 
   return {
     id: updated.id,
     name: updated.name ?? '',
-    fullName: updated.name ?? '', // keep alias on return
+    fullName: updated.name ?? '',
     email: updated.email ?? '',
     phone: updated.phone ?? '',
     avatar: updated.avatar ?? '',
   };
+}
+
+// ------------------------------
+// Per-user bookings (NEW)
+
+function ensureBookingsArray(u) {
+  return Array.isArray(u?.bookings) ? u.bookings : [];
+}
+
+export function getBookings() {
+  return ensureBookingsArray(getActiveUser());
+}
+
+export function setBookings(next) {
+  const updated = updateActiveUser({ bookings: next });
+  return ensureBookingsArray(updated);
+}
+
+export function addBooking(booking) {
+  const list = getBookings();
+  const id = booking?.id || ('bk_' + (crypto?.randomUUID ? crypto.randomUUID() : Date.now()));
+  const item = {
+    id,
+    status: booking?.status || 'scheduled',
+    createdAt: booking?.createdAt || Date.now(),
+    pickup: booking?.pickup || '',
+    dropoff: booking?.dropoff || '',
+    vehicle: booking?.vehicle || '',
+    helpers: booking?.helpers || '',
+    items: booking?.items || [],
+    distanceKm: booking?.distanceKm ?? null,
+    total: booking?.total ?? booking?.price ?? 0,
+  };
+  const next = [item, ...list].slice(0, 25); // cap
+  return setBookings(next);
+}
+
+export function updateBooking(id, patch) {
+  const list = getBookings();
+  const next = list.map(b => (b.id === id ? { ...b, ...patch } : b));
+  return setBookings(next);
+}
+
+export function removeBooking(id) {
+  const list = getBookings();
+  const next = list.filter(b => b.id !== id);
+  return setBookings(next);
 }
 
