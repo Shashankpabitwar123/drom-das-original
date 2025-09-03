@@ -1,21 +1,9 @@
 // src/components/RecentBookings.jsx
 import React, { useEffect, useMemo, useState, useCallback } from 'react'
 import { Eye, X } from 'lucide-react'
+import { getBookings, updateBooking } from '../lib/auth'
 
-const STORAGE_KEY = 'dd_bookings_v1'
-
-function loadBookings() {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    return raw ? JSON.parse(raw) : []
-  } catch { return [] }
-}
-function saveBookings(items) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(items))
-  window.dispatchEvent(new CustomEvent('dd:bookings:update')) // live refresh
-}
-
-/* === NEW: helpers to always show NET (after promo) with two decimals === */
+/* === show NET (after promo) with two decimals === */
 function money(n){ return (Math.max(0, Number(n) || 0)).toFixed(2) }
 function displayAmount(b){
   if (typeof b?.total === 'number') return money(b.total) // preferred: persisted net
@@ -27,17 +15,22 @@ function displayAmount(b){
 }
 
 export default function RecentBookings({ limit = 5 }) {
-  const [items, setItems] = useState(() => loadBookings())
+  // Read bookings for the **active user**
+  const [items, setItems] = useState(() => getBookings())
+
+  const refresh = useCallback(() => {
+    setItems(getBookings())
+  }, [])
 
   useEffect(() => {
-    const sync = () => setItems(loadBookings())
-    window.addEventListener('storage', sync)              // cross-tab
-    window.addEventListener('dd:bookings:update', sync)   // same tab
-    return () => {
-      window.removeEventListener('storage', sync)
-      window.removeEventListener('dd:bookings:update', sync)
-    }
-  }, [])
+    // initial + keep in sync if user switches or another tab updates users store
+    refresh()
+    const onStorage = () => refresh()
+    window.addEventListener('storage', onStorage)
+    // light polling handles same-tab updates after checkout
+    const id = setInterval(refresh, 1000)
+    return () => { window.removeEventListener('storage', onStorage); clearInterval(id) }
+  }, [refresh])
 
   const display = useMemo(
     () => [...items].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)).slice(0, limit),
@@ -45,12 +38,9 @@ export default function RecentBookings({ limit = 5 }) {
   )
 
   const cancel = useCallback((id) => {
-    setItems(prev => {
-      const next = prev.map(b => b.id === id ? { ...b, status: 'cancelled' } : b)
-      saveBookings(next)
-      return next
-    })
-  }, [])
+    updateBooking(id, { status: 'cancelled' })
+    refresh()
+  }, [refresh])
 
   if (display.length === 0) return null
 
@@ -88,12 +78,20 @@ export default function RecentBookings({ limit = 5 }) {
               </div>
 
               <div className="mt-3 space-y-1 text-sm text-gray-700">
-                <div className="flex items-center gap-2"><span>📍</span><span>Pinned Location at {b.pickupLabel}</span></div>
-                <div className="flex items-center gap-2"><span>📍</span><span>Pinned Location at {b.dropoffLabel}</span></div>
-                <div className="flex items-center gap-2"><span>🚚</span><span>{b.vehicle} · {b.helpers}</span></div>
+                <div className="flex items-center gap-2">
+                  <span>📍</span>
+                  <span>Pinned Location at {b.pickup || b.pickupLabel}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span>📍</span>
+                  <span>Pinned Location at {b.dropoff || b.dropoffLabel}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span>🚚</span>
+                  <span>{b.vehicle} · {b.helpers}</span>
+                </div>
               </div>
 
-              {/* === CHANGED: show net amount (after promo) with 2 decimals === */}
               <div className="mt-3 pt-3 border-t font-semibold">${displayAmount(b)}</div>
             </div>
           </div>
