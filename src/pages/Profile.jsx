@@ -1,7 +1,7 @@
 import React from 'react'
 import { useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { getProfile, updateProfile } from '../lib/auth'
+import { getProfile, updateProfile, getActiveUser } from '../lib/auth'
 
 const SAVED_PLACES_KEY = 'dd_saved_places'
 const AVATAR_KEY = 'dd_avatar'                 // keep avatar separate (per your current design)
@@ -43,15 +43,23 @@ export default function Profile() {
 
   // ---- hydrate from the logged-in user (auth store) ----
   useEffect(() => {
-    const u = getProfile()
-    if (!u) {
+    const p = getProfile()
+    if (!p) {
       // not logged in → bounce to /auth
       nav('/auth', { replace: true })
       return
     }
-    setFullName(u.fullName || '')
-    setPhone(u.phone || '')
-    setEmail(u.email || '')
+
+    // Robust name fallback: profile.fullName → profile.name → activeUser.name
+    let nameFromProfile = p.fullName || p.name || ''
+    if (!nameFromProfile) {
+      const au = getActiveUser()
+      nameFromProfile = au?.name || ''
+    }
+
+    setFullName(nameFromProfile)
+    setPhone(p.phone || '')
+    setEmail(p.email || '')
   }, [nav])
 
   // avatar upload
@@ -71,11 +79,18 @@ export default function Profile() {
   function saveChanges() {
     try {
       // keep profile fields in auth store so login/other pages stay in sync
-      updateProfile({ fullName: fullName.trim(), phone: phone.trim() })
+      const saved = updateProfile({ fullName: fullName.trim(), phone: phone.trim(), email }) || {}
+
+      // refresh UI from returned profile (covers greeting + any auth mapping)
+      setFullName(saved.fullName || saved.name || fullName)
+      setPhone(saved.phone ?? phone)
+      setEmail(saved.email ?? email)
+
       // persist the rest locally (per your current design)
       localStorage.setItem(EM_NAME_KEY, emergencyName.trim())
       localStorage.setItem(EM_PHONE_KEY, emergencyPhone.trim())
       localStorage.setItem(SAVED_PLACES_KEY, JSON.stringify(places.slice(0, 4)))
+
       alert('Changes saved ✅')
     } catch (err) {
       alert(err?.message || 'Failed to save profile')
