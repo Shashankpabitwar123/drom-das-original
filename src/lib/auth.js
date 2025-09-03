@@ -40,7 +40,6 @@ export function updateActiveUser(patch) {
   const i = users.findIndex(u => u.id === id);
   if (i === -1) return null;
 
-  // Merge patch onto user
   users[i] = { ...users[i], ...patch };
   saveUsers(users);
   return users[i];
@@ -67,9 +66,11 @@ export function createUser({ name, email, password }) {
     name: name ?? '',
     email: normEmail,
     password: password ?? '',      // (dev only—don’t store plaintext in prod)
-    wallet: 0,                     // <-- new accounts start at 0
-    walletCards: [],               // initialize so context/UI never sees undefined
-    walletTxns: [],                // initialize so context/UI never sees undefined
+    wallet: 0,                     // new accounts start at 0
+    walletCards: [],               // initialize
+    walletTxns: [],                // initialize
+    phone: '',
+    avatar: '',
     createdAt: Date.now(),
   };
 
@@ -78,6 +79,9 @@ export function createUser({ name, email, password }) {
   setActiveUserId(user.id);
   return user;
 }
+
+// keep Auth.jsx happy if it imports registerUser
+export const registerUser = createUser;
 
 export function loginUser({ email, password }) {
   const users = loadUsers();
@@ -88,11 +92,13 @@ export function loginUser({ email, password }) {
   );
   if (!user) throw new Error('Invalid email or password.');
 
-  // Backfill wallet fields if missing (older accounts)
+  // Backfill wallet/profile fields if missing (older accounts)
   let patched = false;
   if (user.wallet == null) { user.wallet = 0; patched = true; }
   if (!Array.isArray(user.walletCards)) { user.walletCards = []; patched = true; }
   if (!Array.isArray(user.walletTxns)) { user.walletTxns = []; patched = true; }
+  if (user.phone == null) { user.phone = ''; patched = true; }
+  if (user.avatar == null) { user.avatar = ''; patched = true; }
   if (patched) {
     const i = users.findIndex(u => u.id === user.id);
     users[i] = user;
@@ -106,5 +112,45 @@ export function loginUser({ email, password }) {
 export function logoutUser() {
   setActiveUserId(null);
 }
-export const registerUser = createUser;
+
+// ------------------------------
+// Profile helpers (used by Profile.jsx)
+
+export function getProfile() {
+  const u = getActiveUser();
+  if (!u) return null;
+  // Return only the fields the Profile page expects to read
+  return {
+    id: u.id,
+    name: u.name ?? '',
+    email: u.email ?? '',
+    phone: u.phone ?? '',
+    avatar: u.avatar ?? '',
+  };
+}
+
+export function updateProfile(patch) {
+  // Only allow updating safe profile fields
+  const allowed = ['name', 'email', 'phone', 'avatar'];
+  const safe = {};
+  for (const k of allowed) {
+    if (Object.prototype.hasOwnProperty.call(patch, k)) {
+      safe[k] = patch[k];
+    }
+  }
+  if (typeof safe.email === 'string') {
+    safe.email = safe.email.trim().toLowerCase();
+  }
+  const updated = updateActiveUser(safe);
+  if (!updated) return null;
+
+  // Return the same shape as getProfile()
+  return {
+    id: updated.id,
+    name: updated.name ?? '',
+    email: updated.email ?? '',
+    phone: updated.phone ?? '',
+    avatar: updated.avatar ?? '',
+  };
+}
 
