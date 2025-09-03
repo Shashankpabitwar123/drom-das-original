@@ -1,9 +1,21 @@
 import React from 'react'
 import { X, LogOut, User, Wallet, Gift, FileClock, MessageSquare } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
+//new
+import { getActiveRole, setActiveRole } from '../lib/auth'
 
 export default function ManageAccountDrawer({ open, onClose }) {
   const nav = useNavigate()
+  const activeRole = getActiveRole()
+
+  
+  function switchRole(next) {
+    setActiveRole(next)
+    onClose?.()
+    if (next === 'driver') nav('/driver')
+    else nav('/home')
+    window.dispatchEvent(new CustomEvent('dd:auth:changed'))
+  }
 
   function signOut() {
     localStorage.removeItem('dormdash_authed')
@@ -58,14 +70,28 @@ export default function ManageAccountDrawer({ open, onClose }) {
             </nav>
           </div>
 
-          <div>
-            <div className="text-gray-500 font-semibold uppercase tracking-wide">Role</div>
-            <div className="mt-2 flex gap-3">
-              <button className="h-11 px-4 rounded-xl border w-full">Customer</button>
-              <button className="h-11 px-4 rounded-xl border w-full">Driver</button>
-            </div>
+          
+//-----new------------------//
+        <div>
+          <div className="text-gray-500 font-semibold uppercase tracking-wide">Role</div>
+          <div className="mt-2 flex gap-3">
+            <button
+              onClick={()=>switchRole('customer')}
+              className={`h-11 px-4 rounded-xl border w-full ${activeRole==='customer'?'bg-gray-900 text-white':''}`}
+            >
+              Customer
+            </button>
+            <button
+              onClick={()=>switchRole('driver')}
+              className={`h-11 px-4 rounded-xl border w-full ${activeRole==='driver'?'bg-gray-900 text-white':''}`}
+            >
+              Driver
+            </button>
           </div>
+        </div>
 
+
+          
           <button onClick={signOut} className="text-red-600 flex items-center gap-2 text-lg">
             <LogOut/> <span>Sign Out</span>
           </button>
