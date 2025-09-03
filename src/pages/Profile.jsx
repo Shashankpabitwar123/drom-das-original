@@ -2,6 +2,9 @@ import React from 'react'
 import { useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { getProfile, updateProfile, getActiveUser } from '../lib/auth'
+//-------new-----//
+import { getDriverProfile, updateDriverProfile } from '../lib/auth'
+//---------------//
 
 const SAVED_PLACES_KEY = 'dd_saved_places'
 const AVATAR_KEY = 'dd_avatar'                 // keep avatar separate (per your current design)
@@ -40,6 +43,25 @@ export default function Profile() {
   const [newAddress, setNewAddress] = React.useState('')
 
   const fileRef = React.useRef(null)
+
+  //--------------------new--------------------//
+  // driver profile
+  const [vehicleType, setVehicleType] = React.useState(getDriverProfile().vehicleType || '')
+  const [licenseNumber, setLicenseNumber] = React.useState(getDriverProfile().licenseNumber || '')
+  const [helpersCount, setHelpersCount] = React.useState(getDriverProfile().helpers || 0)
+  
+  function saveDriverProfile(e){
+    e.preventDefault()
+    updateDriverProfile({
+      vehicleType,
+      licenseNumber,
+      helpers: Number(helpersCount||0),
+      // statuses remain pending until you wire the verifications
+    })
+    alert('Driver profile saved')
+  }
+//----------------------------------------------//
+
 
   // ---- hydrate from the logged-in user (auth store) ----
   useEffect(() => {
@@ -196,6 +218,34 @@ export default function Profile() {
             <input value={emergencyPhone} onChange={e=>setEmergencyPhone(e.target.value)} placeholder="(555) 987-6543" className="h-11 px-3 rounded-xl border"/>
           </div>
         </div>
+
+
+        //------------------------------new------------------------//
+        <section className="card">
+  <h2 className="section-title">Driver Profile &amp; Verification</h2>
+  <form onSubmit={saveDriverProfile} className="grid md:grid-cols-2 gap-3">
+    <select className="h-11 px-3 rounded-xl border" value={vehicleType} onChange={e=>setVehicleType(e.target.value)}>
+      <option value="">Select vehicle</option>
+      <option>Pickup Truck</option>
+      <option>Small Box Truck</option>
+      <option>Large Box Truck</option>
+      <option>Van</option>
+    </select>
+    <input className="h-11 px-3 rounded-xl border" placeholder="License Number" value={licenseNumber} onChange={e=>setLicenseNumber(e.target.value)} />
+    <input className="h-11 px-3 rounded-xl border" type="number" min="0" placeholder="Helpers" value={helpersCount} onChange={e=>setHelpersCount(e.target.value)} />
+    <div className="md:col-span-2 flex gap-3">
+      <span className="chip">License: pending</span>
+      <span className="chip">Background: pending</span>
+      <span className="chip">Insurance: pending</span>
+    </div>
+    <div className="md:col-span-2 flex justify-end">
+      <button className="btn-primary">Save Driver Profile</button>
+    </div>
+  </form>
+</section>
+
+//------------------------------------------------------//
+
 
         {/* Saved Places */}
         <div className="md:col-span-2 card p-6">
