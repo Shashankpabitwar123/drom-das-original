@@ -14,3 +14,25 @@
 
 .qa-tile { @apply flex flex-col justify-center rounded-2xl p-6 border shadow-sm; }
 
+
+
+
+
+
+/* ===== app helpers for pages I added ===== */
+.page        { @apply max-w-6xl mx-auto px-4 py-8; }
+.page-title  { @apply text-3xl font-extrabold; }
+
+/* Inputs + buttons */
+.input       { @apply h-11 px-3 rounded-xl border border-gray-200 bg-white outline-none
+                    focus:ring-2 focus:ring-brand-500 focus:border-brand-500; }
+
+/* Keep your brand button as the primary CTA, and also provide .btn-primary alias */
+.btn-primary { @apply w-full h-12 rounded-xl font-semibold text-white bg-brand-500 hover:bg-brand-600 transition; }
+
+/* Small icon buttons used on Bookings actions */
+.icon-btn    { @apply h-9 w-9 grid place-items-center rounded-xl border border-gray-200 hover:bg-gray-50; }
+
+/* Chips */
+.chip--active { @apply bg-gray-900 text-white border-gray-900; }
+/* (You already have .chip; this just adds the selected state.) */
