@@ -40,9 +40,15 @@ export function updateActiveUser(patch) {
   const i = users.findIndex(u => u.id === id);
   if (i === -1) return null;
 
+  // Merge patch onto user
   users[i] = { ...users[i], ...patch };
   saveUsers(users);
   return users[i];
+}
+
+// Small helper used by RequireAuth.jsx
+export function isAuthed() {
+  return Boolean(getActiveUserId());
 }
 
 // ------------------------------
@@ -50,16 +56,20 @@ export function updateActiveUser(patch) {
 
 export function createUser({ name, email, password }) {
   const users = loadUsers();
-  if (users.some(u => u.email === email)) {
+  const normEmail = String(email || '').trim().toLowerCase();
+
+  if (users.some(u => (u.email || '').toLowerCase() === normEmail)) {
     throw new Error('Account already exists for this email.');
   }
 
   const user = {
     id: crypto?.randomUUID ? crypto.randomUUID() : String(Date.now()),
-    name,
-    email,
-    password,        // (dev only—don’t store plaintext in prod)
-    wallet: 0,       // <-- IMPORTANT: new accounts start at 0
+    name: name ?? '',
+    email: normEmail,
+    password: password ?? '',      // (dev only—don’t store plaintext in prod)
+    wallet: 0,                     // <-- new accounts start at 0
+    walletCards: [],               // initialize so context/UI never sees undefined
+    walletTxns: [],                // initialize so context/UI never sees undefined
     createdAt: Date.now(),
   };
 
@@ -71,8 +81,24 @@ export function createUser({ name, email, password }) {
 
 export function loginUser({ email, password }) {
   const users = loadUsers();
-  const user = users.find(u => u.email === email && u.password === password);
+  const normEmail = String(email || '').trim().toLowerCase();
+
+  const user = users.find(
+    u => (u.email || '').toLowerCase() === normEmail && u.password === password
+  );
   if (!user) throw new Error('Invalid email or password.');
+
+  // Backfill wallet fields if missing (older accounts)
+  let patched = false;
+  if (user.wallet == null) { user.wallet = 0; patched = true; }
+  if (!Array.isArray(user.walletCards)) { user.walletCards = []; patched = true; }
+  if (!Array.isArray(user.walletTxns)) { user.walletTxns = []; patched = true; }
+  if (patched) {
+    const i = users.findIndex(u => u.id === user.id);
+    users[i] = user;
+    saveUsers(users);
+  }
+
   setActiveUserId(user.id);
   return user;
 }
@@ -80,3 +106,4 @@ export function loginUser({ email, password }) {
 export function logoutUser() {
   setActiveUserId(null);
 }
+
