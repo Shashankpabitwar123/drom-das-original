@@ -65,7 +65,8 @@ export function createUser({ name, email, password }) {
     id: crypto?.randomUUID ? crypto.randomUUID() : String(Date.now()),
     name: name ?? '',
     email: normEmail,
-    password: password ?? '',      // (dev only—don’t store plaintext in prod)
+    password: password ?? '',
+    phone: phone ?? '', 
     wallet: 0,                     // new accounts start at 0
     walletCards: [],               // initialize
     walletTxns: [],                // initialize
@@ -77,6 +78,7 @@ export function createUser({ name, email, password }) {
   users.push(user);
   saveUsers(users);
   setActiveUserId(user.id);
+  setGreetingName(user);  
   return user;
 }
 
