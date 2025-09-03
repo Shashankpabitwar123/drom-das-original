@@ -73,12 +73,29 @@ export function createUser({ name, email, password, phone }) {
     email: normEmail,
     password: password ?? '',      // (dev only)
     phone: phone ?? '',
+    role: (typeof arguments[0]?.role === 'string' ? arguments[0].role : 'customer'), // NEW
+
+
+    
     // wallet
     wallet: 0,
     walletCards: [],
     walletTxns: [],
+
+    
     // bookings
     bookings: [],                  // <-- per-user booking history
+
+    //driver profile
+    driverProfile: {
+    vehicleType: '',
+    licenseNumber: '',
+    licenseStatus: 'pending',
+    backgroundStatus: 'pending',
+    helpers: 0,
+  },
+
+    
     // profile
     avatar: '',
     createdAt: Date.now(),
@@ -140,6 +157,30 @@ export function getProfile() {
     phone: u.phone ?? '',
     avatar: u.avatar ?? '',
   };
+}
+
+export function getActiveRole() {
+  return getActiveUser()?.role || 'customer'
+}
+export function setActiveRole(role) {
+  const updated = updateActiveUser({ role })
+  return updated?.role || role
+}
+
+export function getDriverProfile() {
+  return getActiveUser()?.driverProfile || {
+    vehicleType: '', licenseNumber: '', licenseStatus: 'pending', backgroundStatus: 'pending', helpers: 0
+  }
+}
+export function updateDriverProfile(patch) {
+  const u = getActiveUser()
+  const next = { ...(u?.driverProfile || {}), ...patch }
+  const updated = updateActiveUser({ driverProfile: next })
+  return updated?.driverProfile || next
+}
+
+export function emitAuthChanged() {
+  try { window.dispatchEvent(new CustomEvent('dd:auth:changed')) } catch {}
 }
 
 export function updateProfile(patch) {
