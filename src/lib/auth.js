@@ -45,6 +45,12 @@ export function updateActiveUser(patch) {
   return users[i];
 }
 
+// Helper to keep Home header name fresh
+function setGreetingName(user) {
+  const display = (user?.name && String(user.name).trim()) || user?.email || 'Guest';
+  try { localStorage.setItem('dormdash_username', display); } catch {}
+}
+
 // Small helper used by RequireAuth.jsx
 export function isAuthed() {
   return Boolean(getActiveUserId());
@@ -53,7 +59,7 @@ export function isAuthed() {
 // ------------------------------
 // Account creation / login
 
-export function createUser({ name, email, password }) {
+export function createUser({ name, email, password, phone }) {   // <-- phone added
   const users = loadUsers();
   const normEmail = String(email || '').trim().toLowerCase();
 
@@ -65,8 +71,8 @@ export function createUser({ name, email, password }) {
     id: crypto?.randomUUID ? crypto.randomUUID() : String(Date.now()),
     name: name ?? '',
     email: normEmail,
-    password: password ?? '',
-    phone: phone ?? '', 
+    password: password ?? '',      // (dev only)
+    phone: phone ?? '',            // <-- stored
     wallet: 0,                     // new accounts start at 0
     walletCards: [],               // initialize
     walletTxns: [],                // initialize
@@ -77,7 +83,7 @@ export function createUser({ name, email, password }) {
   users.push(user);
   saveUsers(users);
   setActiveUserId(user.id);
-  setGreetingName(user);  
+  setGreetingName(user);           // update header name
   return user;
 }
 
@@ -107,6 +113,7 @@ export function loginUser({ email, password }) {
   }
 
   setActiveUserId(user.id);
+  setGreetingName(user);           // update header name
   return user;
 }
 
@@ -120,7 +127,6 @@ export function logoutUser() {
 export function getProfile() {
   const u = getActiveUser();
   if (!u) return null;
-  // Return only the fields the Profile page expects to read
   return {
     id: u.id,
     name: u.name ?? '',
@@ -131,13 +137,10 @@ export function getProfile() {
 }
 
 export function updateProfile(patch) {
-  // Only allow updating safe profile fields
   const allowed = ['name', 'email', 'phone', 'avatar'];
   const safe = {};
   for (const k of allowed) {
-    if (Object.prototype.hasOwnProperty.call(patch, k)) {
-      safe[k] = patch[k];
-    }
+    if (Object.prototype.hasOwnProperty.call(patch, k)) safe[k] = patch[k];
   }
   if (typeof safe.email === 'string') {
     safe.email = safe.email.trim().toLowerCase();
@@ -145,7 +148,8 @@ export function updateProfile(patch) {
   const updated = updateActiveUser(safe);
   if (!updated) return null;
 
-  // Return the same shape as getProfile()
+  setGreetingName(updated);   // keep greeting in sync
+
   return {
     id: updated.id,
     name: updated.name ?? '',
@@ -154,4 +158,5 @@ export function updateProfile(patch) {
     avatar: updated.avatar ?? '',
   };
 }
+
 
