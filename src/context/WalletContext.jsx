@@ -1,150 +1,166 @@
+// src/context/WalletContext.jsx
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react'
+import {
+  getActiveUser,
+  getActiveUserId,
+  updateActiveUser,
+  createUser, // not used here, but handy if you import elsewhere
+} from '../lib/auth'
 
-const WalletContext = createContext(null)
-
-const STORAGE = {
-  cards: 'dd_cards',
-  defaultCard: 'dd_default_card',
-  balance: 'dd_balance',
-  txns: 'dd_txns',
-}
-
-function loadJSON(key, fallback) {
-  try {
-    const raw = localStorage.getItem(key)
-    return raw ? JSON.parse(raw) : fallback
-  } catch {
-    return fallback
-  }
-}
-function saveJSON(key, value) {
-  localStorage.setItem(key, JSON.stringify(value))
-  window.dispatchEvent(new CustomEvent('dd:wallet:update'))
-}
-
-function seedCardsIfEmpty(cards) {
-  // Do not seed demo cards; start empty so users only see cards they add.
-  return Array.isArray(cards) ? cards : [];
-}
+const WalletCtx = createContext(null)
 
 export function WalletProvider({ children }) {
-  const [cards, setCards]   = useState(() => seedCardsIfEmpty(loadJSON(STORAGE.cards, [])))
-  const [balance, setBalance] = useState(() => {
-    const v = localStorage.getItem(STORAGE.balance)
-    return v ? parseFloat(v) : 0
-  })
-  const [txns, setTxns] = useState(() => loadJSON(STORAGE.txns, []))
+  const [activeUserId, setActiveUserId] = useState(getActiveUserId())
+  const [balance, setBalance] = useState(0)
+  const [cards, setCards] = useState([])   // [{id, brand, last4, expMonth, expYear, isDefault, name}]
+  const [txns, setTxns] = useState([])     // [{id, label, amount, date}]
 
-  useEffect(() => {
-    if (!cards.some(c => c.isDefault) && cards.length) {
-      const next = cards.map((c,i)=> ({...c, isDefault: i===0}))
-      setCards(next)
-    }
-  }, [])
-
-  useEffect(() => {
-    const sync = () => {
-      setCards(loadJSON(STORAGE.cards, []))
-      setBalance(parseFloat(localStorage.getItem(STORAGE.balance) || '0') || 0)
-      setTxns(loadJSON(STORAGE.txns, []))
-    }
-    window.addEventListener('dd:wallet:update', sync)
-    window.addEventListener('storage', sync)
-    return () => {
-      window.removeEventListener('dd:wallet:update', sync)
-      window.removeEventListener('storage', sync)
-    }
-  }, [])
-
-  function persistCards(next)   { setCards(next);   saveJSON(STORAGE.cards, next) }
-  function persistTxns(next)    { setTxns(next);    saveJSON(STORAGE.txns, next) }
-  function persistBalance(next) {
-    setBalance(next)
-    localStorage.setItem(STORAGE.balance, String(next))
-    window.dispatchEvent(new CustomEvent('dd:wallet:update'))
+  // ---- helpers to read/write wallet fields on the active user record ----
+  function loadFromUser(u) {
+    // New accounts may not have wallet fields yet; initialize safely.
+    const b = Number(u?.wallet ?? 0)
+    const c = Array.isArray(u?.walletCards) ? u.walletCards : []
+    const t = Array.isArray(u?.walletTxns) ? u.walletTxns : []
+    setBalance(b)
+    setCards(c)
+    setTxns(t)
   }
 
-  function addCard({ number, expMonth, expYear, name }) {
-    const digits = String(number || '').replace(/\D/g, '')
-    const last4 = digits.slice(-4) || '0000'
-    const brand = digits.startsWith('4') ? 'Visa' : digits.startsWith('5') ? 'Mastercard' : 'Card'
-    const id = 'c_' + Math.random().toString(36).slice(2)
-    const card = { id, brand, last4, expMonth, expYear, name, isDefault: cards.length===0 }
-    persistCards([card, ...cards])
-    return card
+  function writeToUser(patch) {
+    const updated = updateActiveUser(patch)
+    if (updated) loadFromUser(updated)
   }
-  function removeCard(id)     { persistCards(cards.filter(c => c.id !== id)) }
-  function setDefaultCard(id) { persistCards(cards.map(c => ({...c, isDefault: c.id === id }))) }
 
+  // ---- initial load + respond to account switches (e.g., login/logout) ----
+  useEffect(() => {
+    const u = getActiveUser()
+    setActiveUserId(getActiveUserId())
+
+    // Ensure new users start at 0 and have arrays defined
+    if (u && (u.wallet == null || u.walletCards == null || u.walletTxns == null)) {
+      writeToUser({
+        wallet: Number(u.wallet ?? 0),      // default 0
+        walletCards: Array.isArray(u.walletCards) ? u.walletCards : [],
+        walletTxns: Array.isArray(u.walletTxns) ? u.walletTxns : [],
+      })
+      return
+    }
+
+    loadFromUser(u)
+    // Listen to storage changes (another tab) and auth changes
+    const onStorage = () => {
+      setActiveUserId(getActiveUserId())
+      loadFromUser(getActiveUser())
+    }
+    window.addEventListener('storage', onStorage)
+    return () => window.removeEventListener('storage', onStorage)
+  }, [])
+
+  // Expose a way to refresh after login/logout if your auth flow doesn’t reload the page
+  function refreshFromAuthChange() {
+    setActiveUserId(getActiveUserId())
+    loadFromUser(getActiveUser())
+  }
+
+  // ---- card helpers ----
+  function brandFromNumber(num = '') {
+    const n = (num || '').replace(/\s+/g, '')
+    if (/^4/.test(n)) return 'Visa'
+    if (/^5[1-5]/.test(n)) return 'Mastercard'
+    if (/^3[47]/.test(n)) return 'Amex'
+    if (/^6(?:011|5)/.test(n)) return 'Discover'
+    return 'Card'
+  }
+
+  function addCard({ number, name, expMonth, expYear }) {
+    const id = crypto?.randomUUID ? crypto.randomUUID() : String(Date.now())
+    const last4 = (number || '').replace(/\s+/g, '').slice(-4) || '0000'
+    const brand = brandFromNumber(number)
+    const newCard = {
+      id, brand, last4, expMonth, expYear, name,
+      isDefault: cards.length === 0, // first card becomes default
+    }
+    const nextCards = [...cards, newCard]
+    setCards(nextCards)
+    writeToUser({ walletCards: nextCards })
+  }
+
+  function setDefaultCard(id) {
+    const next = cards.map(c => ({ ...c, isDefault: c.id === id }))
+    setCards(next)
+    writeToUser({ walletCards: next })
+  }
+
+  // ---- funds / transactions ----
   function addFunds(amount) {
-    const amt = Math.max(0, parseFloat(amount || 0))
-    if (!amt) return
-    const next = parseFloat((balance + amt).toFixed(2))
-    persistBalance(next)
-    const txn = {
-      id: 't_' + Math.random().toString(36).slice(2),
+    const amt = Number(amount)
+    if (!amt || amt <= 0) return
+    const newBal = Number(balance) + amt
+    setBalance(newBal)
+
+    const entry = {
+      id: crypto?.randomUUID ? crypto.randomUUID() : String(Date.now()),
+      label: 'Funds added',
+      amount: +amt, // positive
       date: Date.now(),
-      label: 'Add Funds',
-      amount: amt, // positive
-      type: 'funds',
     }
-    persistTxns([txn, ...txns])
-    return next
+    const nextTxns = [entry, ...txns]
+    setTxns(nextTxns)
+
+    writeToUser({ wallet: newBal, walletTxns: nextTxns })
   }
 
-  // Pay for a booking
-  function pay(amount, opts = {}) {
-    const total = Math.max(0, parseFloat(amount || 0))
-    if (!total) return
+  // If you ever deduct for a booking, call this:
+  function charge(amount, label = 'Move charge') {
+    const cost = Math.abs(Number(amount || 0))
+    if (!cost) return
+    const newBal = Math.max(0, Number(balance) - cost)
+    setBalance(newBal)
 
-    const useFunds = Math.min(Math.max(0, parseFloat(opts.funds || 0)), balance, total)
-    const remaining = parseFloat((total - useFunds).toFixed(2))
-
-    if (useFunds) persistBalance(parseFloat((balance - useFunds).toFixed(2)))
-
-    let card = null
-    if (remaining > 0) {
-      const cardId = opts.cardId || (cards.find(c=>c.isDefault)?.id)
-      card = cards.find(c => c.id === cardId) || null
-      if (!card) throw new Error('No card selected')
-    }
-
-    const txn = {
-      id: 't_' + Math.random().toString(36).slice(2),
+    const entry = {
+      id: crypto?.randomUUID ? crypto.randomUUID() : String(Date.now()),
+      label,
+      amount: -cost, // negative
       date: Date.now(),
-      label: opts.label || 'Move booking',
-      amount: -total, // negative spend
-      type: 'move',
-      meta: { useFunds, cardLast4: card?.last4 || null }
     }
-    persistTxns([txn, ...txns])
+    const nextTxns = [entry, ...txns]
+    setTxns(nextTxns)
 
-    return { useFunds, chargedOnCard: remaining, txn }
+    writeToUser({ wallet: newBal, walletTxns: nextTxns })
   }
 
+  // ---- month stats (for your UI box) ----
   const monthStats = useMemo(() => {
     const now = new Date()
-    const y = now.getFullYear(), m = now.getMonth()
-    const inMonth = txns.filter(t => {
+    const y = now.getFullYear()
+    const m = now.getMonth()
+    const thisMonth = txns.filter(t => {
       const d = new Date(t.date)
-      return d.getFullYear()===y && d.getMonth()===m && t.type==='move'
+      return d.getFullYear() === y && d.getMonth() === m
     })
-    const totalSpent = inMonth.reduce((s,t)=> s + Math.abs(Math.min(0, t.amount)), 0)
-    const moves = inMonth.length
-    const avg = moves ? totalSpent / moves : 0
-    return { totalSpent, moves, avg }
+    const spent = thisMonth
+      .filter(t => t.amount < 0)
+      .reduce((s, t) => s + Math.abs(t.amount), 0)
+    const moves = thisMonth.filter(t => t.amount < 0).length
+    const avg = moves ? spent / moves : 0
+    return { totalSpent: spent, moves, avg }
   }, [txns])
 
   const value = {
-    cards, balance, txns,
-    addCard, removeCard, setDefaultCard,
-    addFunds, pay,
-    monthStats,
+    // data
+    balance, cards, txns, monthStats,
+    // actions
+    addFunds, charge, addCard, setDefaultCard,
+    // util
+    refreshFromAuthChange,
   }
 
-  return <WalletContext.Provider value={value}>{children}</WalletContext.Provider>
+  return <WalletCtx.Provider value={value}>{children}</WalletCtx.Provider>
 }
 
 export function useWallet() {
-  return useContext(WalletContext)
+  const ctx = useContext(WalletCtx)
+  if (!ctx) throw new Error('useWallet must be used inside <WalletProvider>')
+  return ctx
 }
+
