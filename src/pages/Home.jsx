@@ -36,6 +36,7 @@ export default function Home() {
   const [showSupplies, setShowSupplies] = useState(false)
   const [savedOpen, setSavedOpen] = React.useState(false)
 
+  // ---- Quick Items logic (kept your object-based cart + quantities) ----
   function addQuickItem(name) {
     setQuickItems(prev => ({ ...prev, [name]: (prev[name] || 0) + 1 }))
   }
@@ -59,6 +60,32 @@ export default function Home() {
 
   const selectedItemsList = Object.entries(quickItems)
   const cartCount = Object.values(suppliesCart).reduce((a, b) => a + b, 0)
+
+  // ---- Truck suggestion based on selected items ----
+  // Points roughly represent space/complexity; multiply by quantity
+  const ITEM_POINTS = {
+    Boxes: 1,       // ~10–20 boxes
+    Desk: 2,
+    Mattress: 2,
+    Sofa: 3,
+    TV: 1,
+    Dresser: 2,
+  }
+
+  const totalPoints = React.useMemo(() => {
+    return Object.entries(quickItems).reduce((sum, [name, qty]) => {
+      const pts = ITEM_POINTS[name] || 0
+      return sum + pts * Number(qty || 0)
+    }, 0)
+  }, [quickItems])
+
+  function suggestVehicle(points) {
+    if (points <= 4)  return 'Pickup Truck ($89)'
+    if (points <= 8)  return 'Small Box Truck ($120)'
+    if (points <= 12) return 'Large Box Truck ($180)'
+    return 'Semi-light ($250)'
+  }
+  const suggestedVehicle = React.useMemo(() => suggestVehicle(totalPoints), [totalPoints])
 
   React.useEffect(() => {
     window.dd_pickupLabel = pickup || (pickupCoords ? `${pickupCoords.lat.toFixed(4)}, ${pickupCoords.lng.toFixed(4)}` : '')
@@ -160,15 +187,38 @@ export default function Home() {
               </div>
             </div>
 
-            {/* Quick add items */}
+            {/* Quick items + Truck suggestion */}
             <div className="mt-6">
-              <div className="text-sm font-medium text-gray-800 mb-2">Quick Add Items</div>
+              <div className="text-sm font-medium text-gray-800 mb-2">
+                Tell us what you have so we can help you choose a truck
+              </div>
+
+              {/* Item chips */}
               <div className="flex flex-wrap gap-2">
                 {['Boxes', 'Desk', 'Mattress', 'Sofa', 'TV', 'Dresser'].map((x) => (
                   <button key={x} onClick={() => addQuickItem(x)} className="chip">+ {x}</button>
                 ))}
               </div>
 
+              {/* Suggested vehicle bar */}
+              <div className="mt-3 p-3 border rounded-xl flex items-center gap-3">
+                <div className="text-sm">
+                  <strong>Suggested:</strong> {suggestedVehicle}
+                  {totalPoints > 0 && (
+                    <span className="text-gray-500"> &nbsp;based on your items</span>
+                  )}
+                </div>
+                {suggestedVehicle !== vehicle && (
+                  <button
+                    className="ml-auto h-9 px-3 rounded-md border"
+                    onClick={() => setVehicle(suggestedVehicle)}
+                  >
+                    Apply Suggestion
+                  </button>
+                )}
+              </div>
+
+              {/* Selected items list */}
               {selectedItemsList.length > 0 && (
                 <div className="mt-4 card p-4">
                   <div className="flex items-center justify-between mb-2">
@@ -225,7 +275,6 @@ export default function Home() {
                   </div>
                 </div>
               )}
-
             </div>
 
             {/* Estimated price */}
