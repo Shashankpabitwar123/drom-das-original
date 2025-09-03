@@ -5,6 +5,13 @@ import { createBrowserRouter, RouterProvider } from 'react-router-dom'
 import './index.css'
 import RequireAuth from './components/RequireAuth'
 
+//------new---------//
+import DriverDashboard from './pages/DriverDashboard'
+import DriverEarnings from './pages/DriverEarnings'
+import DriverReviews from './pages/DriverReviews'
+import DriverJobs from './pages/DriverJobs'
+//-------------------//
+
 
 import App from './App'
 import Splash from './pages/Splash'
@@ -39,6 +46,14 @@ const router = createBrowserRouter(
         { path: 'bookings', element: <RequireAuth><Bookings /></RequireAuth> },
         { path: 'chat', element: <RequireAuth><ChatAI /></RequireAuth> },
         { path: '*', element: <NotFound /> },
+
+        //--------------new-----------------//
+        
+        { path: 'driver', element: <RequireAuth><DriverDashboard /></RequireAuth> },
+        { path: 'driver/earnings', element: <RequireAuth><DriverEarnings /></RequireAuth> },
+        { path: 'driver/reviews', element: <RequireAuth><DriverReviews /></RequireAuth> },
+        { path: 'driver/jobs', element: <RequireAuth><DriverJobs /></RequireAuth> },
+
       ],
     },
   ],
