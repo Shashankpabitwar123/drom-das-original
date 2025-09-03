@@ -70,7 +70,6 @@ export function createUser({ name, email, password }) {
     wallet: 0,                     // new accounts start at 0
     walletCards: [],               // initialize
     walletTxns: [],                // initialize
-    phone: '',
     avatar: '',
     createdAt: Date.now(),
   };
