@@ -45,7 +45,7 @@ export function updateActiveUser(patch) {
   return users[i];
 }
 
-// Helper to keep Home header name fresh
+// Keep Home header name fresh
 function setGreetingName(user) {
   const display = (user?.name && String(user.name).trim()) || user?.email || 'Guest';
   try { localStorage.setItem('dormdash_username', display); } catch {}
@@ -59,7 +59,7 @@ export function isAuthed() {
 // ------------------------------
 // Account creation / login
 
-export function createUser({ name, email, password, phone }) {   // <-- phone added
+export function createUser({ name, email, password, phone }) {
   const users = loadUsers();
   const normEmail = String(email || '').trim().toLowerCase();
 
@@ -72,10 +72,10 @@ export function createUser({ name, email, password, phone }) {   // <-- phone ad
     name: name ?? '',
     email: normEmail,
     password: password ?? '',      // (dev only)
-    phone: phone ?? '',            // <-- stored
-    wallet: 0,                     // new accounts start at 0
-    walletCards: [],               // initialize
-    walletTxns: [],                // initialize
+    phone: phone ?? '',
+    wallet: 0,
+    walletCards: [],
+    walletTxns: [],
     avatar: '',
     createdAt: Date.now(),
   };
@@ -83,7 +83,7 @@ export function createUser({ name, email, password, phone }) {   // <-- phone ad
   users.push(user);
   saveUsers(users);
   setActiveUserId(user.id);
-  setGreetingName(user);           // update header name
+  setGreetingName(user);
   return user;
 }
 
@@ -113,7 +113,7 @@ export function loginUser({ email, password }) {
   }
 
   setActiveUserId(user.id);
-  setGreetingName(user);           // update header name
+  setGreetingName(user);
   return user;
 }
 
@@ -130,7 +130,7 @@ export function getProfile() {
   return {
     id: u.id,
     name: u.name ?? '',
-    fullName: u.name ?? '',
+    fullName: u.name ?? '',     // <-- alias for UI
     email: u.email ?? '',
     phone: u.phone ?? '',
     avatar: u.avatar ?? '',
@@ -138,36 +138,35 @@ export function getProfile() {
 }
 
 export function updateProfile(patch) {
-   if (Object.prototype.hasOwnProperty.call(patch, 'fullName')) {
-    patch.name = patch.fullName;         // <-- map
+  // Map fullName from UI to our internal 'name'
+  if (Object.prototype.hasOwnProperty.call(patch, 'fullName')) {
+    patch.name = patch.fullName;
     delete patch.fullName;
   }
+
   const allowed = ['name', 'email', 'phone', 'avatar'];
   const safe = {};
   for (const k of allowed) {
-    if (Object.prototype.hasOwnProperty.call(patch, k)) safe[k] = patch[k];
+    if (Object.prototype.hasOwnProperty.call(patch, k)) {
+      safe[k] = patch[k];
+    }
   }
   if (typeof safe.email === 'string') {
     safe.email = safe.email.trim().toLowerCase();
   }
+
   const updated = updateActiveUser(safe);
   if (!updated) return null;
 
-  (function setGreetingName(user) {
-  const display = (user?.name && String(user.name).trim()) || user?.email || 'Guest';
-  try { localStorage.setItem('dormdash_username', display); } catch {}
-  })(updated);
-
-  setGreetingName(updated);   // keep greeting in sync
+  setGreetingName(updated); // keep Home header in sync
 
   return {
     id: updated.id,
     name: updated.name ?? '',
-    fullName: updated.name ?? '', 
+    fullName: updated.name ?? '', // keep alias on return
     email: updated.email ?? '',
     phone: updated.phone ?? '',
     avatar: updated.avatar ?? '',
   };
 }
-
 
