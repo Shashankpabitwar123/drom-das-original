@@ -106,4 +106,5 @@ export function loginUser({ email, password }) {
 export function logoutUser() {
   setActiveUserId(null);
 }
+export const registerUser = createUser;
 
