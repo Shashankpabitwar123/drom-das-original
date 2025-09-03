@@ -1,21 +1,36 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useBooking } from '../context/BookingContext'
 import { usePromo } from '../context/PromoContext'
-import { useWallet } from '../context/WalletContext' // keep if you added wallet
+import { useWallet } from '../context/WalletContext'      // wallet (cards, balance, pay)
+import { addBooking } from '../lib/auth'                  // per-user booking save
 
 export default function Payment() {
   const nav = useNavigate()
-  const { estimate, pickup, dropoff, vehicle, helpers, suppliesPrice } = useBooking()
+
+  // booking details we’ll store into the user’s booking history
+  const {
+    estimate,
+    pickup, dropoff,
+    vehicle, helpers,
+    suppliesPrice,
+    quickItems,          // NEW: store selected items
+    distanceKm,          // NEW: store distance
+  } = useBooking()
+
   const { promo, applyPromo, computeDiscount } = usePromo()
 
-  // Wallet pieces (optional but recommended)
-  let cards=[], addCard=()=>{}, setDefaultCard=()=>{}, balance=0, pay=(a)=>({}), haveWallet=false
+  // Wallet (defensive: if provider missing, we’ll still allow “pay”)
+  let cards = [], addCard = () => {}, setDefaultCard = () => {}, balance = 0, pay = () => ({ ok: true }), haveWallet = false
   try {
-    // if WalletContext exists
     // eslint-disable-next-line react-hooks/rules-of-hooks
     const w = useWallet()
-    cards = w.cards; addCard = w.addCard; setDefaultCard = w.setDefaultCard; balance = w.balance; pay = w.pay; haveWallet=true
+    cards = w.cards
+    addCard = w.addCard
+    setDefaultCard = w.setDefaultCard
+    balance = w.balance
+    pay = w.pay
+    haveWallet = true
   } catch {}
 
   const [promoInput, setPromoInput] = useState('')
@@ -25,43 +40,79 @@ export default function Payment() {
   const payable  = Math.max(0, estimate - discount)
 
   // wallet UI state
-  const [selectedCard, setSelectedCard] = useState(cards.find(c=>c.isDefault)?.id || (cards[0]?.id))
-  const [showAddCard, setShowAddCard] = useState(cards.length===0)
+  const [selectedCard, setSelectedCard] = useState(cards.find(c => c.isDefault)?.id || cards[0]?.id || null)
+  const [showAddCard, setShowAddCard]   = useState(cards.length === 0)
   const [newCard, setNewCard] = useState({ number:'', name:'', expMonth:'', expYear:'' })
   const [useFunds, setUseFunds] = useState(0)
   const maxFundsUsable = Math.min(balance, payable)
 
+  // Keep selected card valid if the list changes (e.g., after adding a card)
+  useEffect(() => {
+    if (!haveWallet) return
+    if (cards.length === 0) { setSelectedCard(null); return }
+    const stillExists = selectedCard && cards.some(c => c.id === selectedCard)
+    if (!stillExists) {
+      const def = cards.find(c => c.isDefault)?.id || cards[0].id
+      setSelectedCard(def)
+    }
+  }, [cards, selectedCard, haveWallet])
+
   function handleApplyPromo() {
-    const res = applyPromo(promoInput)
+    const res = applyPromo(promoInput.trim())
     setPromoMsg(res.ok ? `Promo "${res.promo.code}" applied.` : res.message)
   }
 
   function handleAddCard(e){
     e.preventDefault()
-    const c = addCard({
-      number:newCard.number,
-      name:newCard.name,
-      expMonth: parseInt(newCard.expMonth||'0',10),
-      expYear: parseInt(newCard.expYear||'0',10),
+    addCard({
+      number: newCard.number,
+      name: newCard.name,
+      expMonth: parseInt(newCard.expMonth || '0', 10),
+      expYear: parseInt(newCard.expYear || '0', 10),
     })
-    setSelectedCard(c.id)
+    // selection will auto-fix in the effect above
     setShowAddCard(false)
+    setNewCard({ number:'', name:'', expMonth:'', expYear:'' })
   }
 
   function handlePay(e){
     e.preventDefault()
-    const finalTotal = payable
-    if (haveWallet) {
-      try{
+
+    // Sanitize wallet funds
+    const walletToUse = Math.max(0, Math.min(Number(useFunds) || 0, maxFundsUsable))
+    const finalTotal  = payable   // what the user owes after promo
+
+    try {
+      if (haveWallet) {
+        // Optional: require a card if remainder > 0
+        const remainder = Math.max(0, finalTotal - walletToUse)
+        if (remainder > 0 && !selectedCard) {
+          alert('Please add/select a card to pay the remaining amount.')
+          return
+        }
+
         const label = `Move: ${pickup || 'Pickup'} → ${dropoff || 'Dropoff'}${promo && discount ? ` (promo ${promo.code})` : ''}`
-        pay(finalTotal, { funds: useFunds, cardId: selectedCard, label })
-        nav('/confirmation')
-      } catch(err) {
-        alert(err.message || 'Payment failed')
+
+        // ✅ correct signature
+        pay({ funds: walletToUse, amountDue: finalTotal, cardId: selectedCard, label })
       }
-    } else {
-      // fallback if no wallet context
+
+      // ✅ per-user booking save
+      addBooking({
+        status: 'scheduled',
+        createdAt: Date.now(),
+        pickup,
+        dropoff,
+        vehicle,
+        helpers,
+        items: quickItems,     // object of selected items & qty
+        distanceKm,
+        total: finalTotal,     // store what they actually paid after promo
+      })
+
       nav('/confirmation')
+    } catch (err) {
+      alert(err?.message || 'Payment failed')
     }
   }
 
@@ -119,13 +170,18 @@ export default function Payment() {
               <div className="font-semibold">Use wallet funds</div>
               <div className="text-sm text-gray-600 mt-1">Available balance: ${balance.toFixed(2)}</div>
               <div className="mt-3 flex items-center gap-2">
-                <input type="number" min="0" max={maxFundsUsable} step="0.01"
+                <input
+                  type="number"
+                  min="0"
+                  max={maxFundsUsable}
+                  step="0.01"
                   value={useFunds}
                   onChange={(e)=> {
                     const v = Math.min(maxFundsUsable, Math.max(0, parseFloat(e.target.value||0)))
                     setUseFunds(Number.isFinite(v) ? v : 0)
                   }}
-                  className="h-11 px-3 rounded-xl border w-40" />
+                  className="h-11 px-3 rounded-xl border w-40"
+                />
                 <button type="button" onClick={()=>setUseFunds(maxFundsUsable)} className="h-11 px-3 rounded-xl border">Use Max</button>
               </div>
             </div>
@@ -168,3 +224,4 @@ export default function Payment() {
     </main>
   )
 }
+
